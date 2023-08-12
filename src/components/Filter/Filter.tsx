@@ -62,13 +62,16 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
     [],
   )
 
+  // handle click on parent filter bar
   const handleToggleOption = useCallback(
     (value: number | string) => {
       const newOpenedOptions = [...openedOptions]
 
+      // if option is already on the opened list, remove it
       if (newOpenedOptions.includes(value)) {
         newOpenedOptions.splice(newOpenedOptions.indexOf(value), 1)
       } else {
+        // if option is not on the opened list, add it
         newOpenedOptions.push(value)
       }
 
@@ -77,14 +80,16 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
     [openedOptions],
   )
 
+  // handle check/uncheck of parent filter checkbox
   const handleChangeParent = useCallback(
     (value: number | string) => {
       const newSelectedFilters = [...selectedFilters]
 
       if (newSelectedFilters.includes(value)) {
+        // if option is already on the list, remove it
         newSelectedFilters.splice(newSelectedFilters.indexOf(value), 1)
 
-        // Check all sub items
+        // Uncheck all sub items
         options?.forEach((option) => {
           if (option.value === value) {
             option.items.forEach((item) => {
@@ -98,9 +103,10 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
           }
         })
       } else {
+        // if option is not on the list, add it
         newSelectedFilters.push(value)
 
-        // Uncheck all sub items
+        // Check all sub items
         options?.forEach((option) => {
           if (option.value === value) {
             option.items.forEach((item) => {
@@ -118,18 +124,40 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
     [onChange, options, selectedFilters],
   )
 
+  // handle check/uncheck of sub item checkbox
   const handleChangeItem = useCallback(
-    (value: number | string) => {
+    (value: number | string, parent: FilterOptionType) => {
       const newSelectedFilters = [...selectedFilters]
 
       if (newSelectedFilters.includes(value)) {
+        // if option is already on the list, remove it
         newSelectedFilters.splice(newSelectedFilters.indexOf(value), 1)
+
+        // if all sub items are unchecked, remove parent from list
+        if (
+          parent.items
+            .map((item) => item.value)
+            .filter((item) => newSelectedFilters.includes(item)).length === 0
+        ) {
+          newSelectedFilters.splice(newSelectedFilters.indexOf(parent.value), 1)
+        }
       } else {
+        // if option is not on the list, add it
         newSelectedFilters.push(value)
+
+        // add parent to list if not already there
+        newSelectedFilters.push(parent.value)
       }
 
-      setSelectedFilters(newSelectedFilters)
-      onChange(newSelectedFilters)
+      // remove possible duplicates from the list
+      const filteredSelectedValues = newSelectedFilters.filter(
+        (item, index) => {
+          return newSelectedFilters.indexOf(item) === index
+        },
+      )
+
+      setSelectedFilters(filteredSelectedValues)
+      onChange(filteredSelectedValues)
     },
     [onChange, selectedFilters],
   )
@@ -138,10 +166,16 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
     () =>
       options?.map((option) => (
         <div key={option.value}>
+          {/* START Parent item */}
           <div style={optionStyle}>
             <input
               type="checkbox"
-              checked={selectedFilters.includes(option.value)}
+              checked={
+                selectedFilters.includes(option.value) ||
+                option.items.some((item) =>
+                  selectedFilters.includes(item.value),
+                )
+              }
               onChange={() => handleChangeParent(option.value)}
             />
             <div
@@ -152,21 +186,26 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
               <span>{openedOptions.includes(option.value) ? '▲' : '▼'}</span>
             </div>
           </div>
+          {/* END Parent item */}
           {openedOptions.includes(option.value) && (
             <div>
               {option.items.map((item) => (
-                <div
-                  key={item.value}
-                  style={itemStyle}
-                  onClick={() => handleChangeItem(item.value)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedFilters.includes(item.value)}
-                    onChange={() => handleChangeItem(item.value)}
-                  />
-                  <span>{item.label}</span>
-                </div>
+                <>
+                  {/* START sub item */}
+                  <div
+                    key={item.value}
+                    style={itemStyle}
+                    onClick={() => handleChangeItem(item.value, option)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedFilters.includes(item.value)}
+                      onChange={() => handleChangeItem(item.value, option)}
+                    />
+                    <span>{item.label}</span>
+                  </div>
+                  {/* END sub item */}
+                </>
               ))}
             </div>
           )}
