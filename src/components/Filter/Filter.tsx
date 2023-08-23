@@ -2,18 +2,24 @@
 /* eslint-disable jsx-a11y/no-static-element-interactions */
 import { CSSProperties, memo, useCallback, useMemo, useState } from 'react'
 
+type OptionValueType = number | string | boolean
+
 type FilterOptionType = {
   label: string
-  value: string | number
+  value: string
   items: {
     label: string
-    value: string | number
+    value: OptionValueType
   }[]
+}
+
+export type selectedFiltersType = {
+  [key: string]: OptionValueType[]
 }
 
 interface IFilterProps {
   options: FilterOptionType[]
-  onChange: (selectedFilters: (number | string)[]) => void
+  onChange: (selectedFilters: selectedFiltersType) => void
 }
 
 const filterContainerStyle: CSSProperties = {
@@ -53,18 +59,21 @@ const itemStyle: CSSProperties = {
   gap: '0.5rem',
   padding: '0.5rem',
   borderBottom: '1px solid #ccc',
+}
+
+const clickableStyle: CSSProperties = {
   cursor: 'pointer',
 }
 
 const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
-  const [openedOptions, setOpenedOptions] = useState<(number | string)[]>([])
-  const [selectedFilters, setSelectedFilters] = useState<(number | string)[]>(
-    [],
+  const [openedOptions, setOpenedOptions] = useState<OptionValueType[]>([])
+  const [selectedFilters, setSelectedFilters] = useState<selectedFiltersType>(
+    {},
   )
 
   // handle click on parent filter bar
   const handleToggleOption = useCallback(
-    (value: number | string) => {
+    (value: OptionValueType) => {
       const newOpenedOptions = [...openedOptions]
 
       // if option is already on the opened list, remove it
@@ -82,40 +91,22 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
 
   // handle check/uncheck of parent filter checkbox
   const handleChangeParent = useCallback(
-    (value: number | string) => {
-      const newSelectedFilters = [...selectedFilters]
+    (parentValue: string) => {
+      const newSelectedFilters = { ...selectedFilters }
 
-      if (newSelectedFilters.includes(value)) {
-        // if option is already on the list, remove it
-        newSelectedFilters.splice(newSelectedFilters.indexOf(value), 1)
-
-        // Uncheck all sub items
-        options?.forEach((option) => {
-          if (option.value === value) {
-            option.items.forEach((item) => {
-              if (newSelectedFilters.includes(item.value)) {
-                newSelectedFilters.splice(
-                  newSelectedFilters.indexOf(item.value),
-                  1,
-                )
-              }
-            })
-          }
-        })
+      // if option is already on the list, remove it
+      if (newSelectedFilters[parentValue]) {
+        delete newSelectedFilters[parentValue]
       } else {
         // if option is not on the list, add it
-        newSelectedFilters.push(value)
+        newSelectedFilters[parentValue] = []
 
         // Check all sub items
-        options?.forEach((option) => {
-          if (option.value === value) {
-            option.items.forEach((item) => {
-              if (!newSelectedFilters.includes(item.value)) {
-                newSelectedFilters.push(item.value)
-              }
-            })
-          }
-        })
+        options
+          .find((option) => option.value === parentValue)
+          ?.items.forEach((item) => {
+            newSelectedFilters[parentValue].push(item.value)
+          })
       }
 
       setSelectedFilters(newSelectedFilters)
@@ -126,38 +117,31 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
 
   // handle check/uncheck of sub item checkbox
   const handleChangeItem = useCallback(
-    (value: number | string, parent: FilterOptionType) => {
-      const newSelectedFilters = [...selectedFilters]
+    (value: OptionValueType, parent: string) => {
+      const newSelectedFilters = { ...selectedFilters }
 
-      if (newSelectedFilters.includes(value)) {
-        // if option is already on the list, remove it
-        newSelectedFilters.splice(newSelectedFilters.indexOf(value), 1)
+      // if option is already on the list, remove it
+      if (newSelectedFilters[parent]?.includes(value)) {
+        newSelectedFilters[parent].splice(
+          newSelectedFilters[parent].indexOf(value),
+          1,
+        )
 
         // if all sub items are unchecked, remove parent from list
-        if (
-          parent.items
-            .map((item) => item.value)
-            .filter((item) => newSelectedFilters.includes(item)).length === 0
-        ) {
-          newSelectedFilters.splice(newSelectedFilters.indexOf(parent.value), 1)
+        if (newSelectedFilters[parent].length === 0) {
+          delete newSelectedFilters[parent]
         }
       } else {
         // if option is not on the list, add it
-        newSelectedFilters.push(value)
+        if (!newSelectedFilters[parent]) {
+          newSelectedFilters[parent] = []
+        }
 
-        // add parent to list if not already there
-        newSelectedFilters.push(parent.value)
+        newSelectedFilters[parent].push(value)
       }
 
-      // remove possible duplicates from the list
-      const filteredSelectedValues = newSelectedFilters.filter(
-        (item, index) => {
-          return newSelectedFilters.indexOf(item) === index
-        },
-      )
-
-      setSelectedFilters(filteredSelectedValues)
-      onChange(filteredSelectedValues)
+      setSelectedFilters(newSelectedFilters)
+      onChange(newSelectedFilters)
     },
     [onChange, selectedFilters],
   )
@@ -165,17 +149,13 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
   const renderOptions = useMemo(
     () =>
       options?.map((option) => (
-        <div key={option.value}>
+        <div key={String(option.value)}>
           {/* START Parent item */}
           <div style={optionStyle}>
             <input
               type="checkbox"
-              checked={
-                selectedFilters.includes(option.value) ||
-                option.items.some((item) =>
-                  selectedFilters.includes(item.value),
-                )
-              }
+              style={clickableStyle}
+              checked={!!selectedFilters[option.value]}
               onChange={() => handleChangeParent(option.value)}
             />
             <div
@@ -192,17 +172,23 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
               {option.items.map((item) => (
                 <>
                   {/* START sub item */}
-                  <div
-                    key={item.value}
-                    style={itemStyle}
-                    onClick={() => handleChangeItem(item.value, option)}
-                  >
+                  <div key={String(item.value)} style={itemStyle}>
                     <input
                       type="checkbox"
-                      checked={selectedFilters.includes(item.value)}
-                      onChange={() => handleChangeItem(item.value, option)}
+                      style={clickableStyle}
+                      checked={selectedFilters[option.value]?.includes(
+                        item.value,
+                      )}
+                      onChange={() =>
+                        handleChangeItem(item.value, option.value)
+                      }
                     />
-                    <span>{item.label}</span>
+                    <span
+                      style={clickableStyle}
+                      onClick={() => handleChangeItem(item.value, option.value)}
+                    >
+                      {item.label}
+                    </span>
                   </div>
                   {/* END sub item */}
                 </>
