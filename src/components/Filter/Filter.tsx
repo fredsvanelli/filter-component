@@ -7,7 +7,7 @@ type OptionValueType = number | string | boolean
 type FilterOptionType = {
   label: string
   value: string
-  items: {
+  items?: {
     label: string
     value: OptionValueType
   }[]
@@ -19,6 +19,8 @@ export type selectedFiltersType = {
 
 interface IFilterProps {
   options: FilterOptionType[]
+  withSearch?: boolean
+  withCounter?: boolean
   onChange: (selectedFilters: selectedFiltersType) => void
 }
 
@@ -29,19 +31,14 @@ const filterContainerStyle: CSSProperties = {
   borderRadius: '0.5rem',
 }
 
+const searchInputStyle: CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+}
+
 const listContainerStyle: CSSProperties = {
   maxHeight: '210px',
   overflowY: 'scroll',
-}
-
-const optionStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'flex-start',
-  gap: '0.5rem',
-  cursor: 'pointer',
-  padding: '0.5rem',
-  backgroundColor: '#eee',
 }
 
 const optionLabelStyle: CSSProperties = {
@@ -65,11 +62,17 @@ const clickableStyle: CSSProperties = {
   cursor: 'pointer',
 }
 
-const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
+const Filter: React.FC<IFilterProps> = ({
+  options,
+  withSearch = false,
+  withCounter = false,
+  onChange,
+}) => {
   const [openedOptions, setOpenedOptions] = useState<OptionValueType[]>([])
   const [selectedFilters, setSelectedFilters] = useState<selectedFiltersType>(
     {},
   )
+  const [searchValue, setSearchValue] = useState('')
 
   // handle click on parent filter bar
   const handleToggleOption = useCallback(
@@ -104,7 +107,7 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
         // Check all sub items
         options
           .find((option) => option.value === parentValue)
-          ?.items.forEach((item) => {
+          ?.items?.forEach((item) => {
             newSelectedFilters[parentValue].push(item.value)
           })
       }
@@ -146,12 +149,58 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
     [onChange, selectedFilters],
   )
 
+  // check if a parent item should be shown based on the search value
+  const shouldShowParentItem = useCallback(
+    (parent: FilterOptionType) =>
+      withSearch && searchValue
+        ? parent.items?.some((item) =>
+            item.label.toLowerCase().includes(searchValue.toLowerCase()),
+          )
+        : true,
+    [withSearch, searchValue],
+  )
+
+  // check if an option should be open
+  const shouldOpenOption = useCallback(
+    (option: FilterOptionType) =>
+      (withSearch && searchValue) || openedOptions.includes(option.value),
+    [openedOptions, withSearch, searchValue],
+  )
+
+  const selectedOptionsCounter = useMemo(
+    () =>
+      Object.keys(selectedFilters).reduce(
+        (acc, key) => acc + Math.max(selectedFilters[key].length, 1),
+        0,
+      ),
+    [selectedFilters],
+  )
+
+  const getOptionStyle = useCallback(
+    (option: FilterOptionType) => ({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      gap: '0.5rem',
+      cursor: 'pointer',
+      padding: '0.5rem',
+      backgroundColor:
+        Array.isArray(option.items) && option.items?.length > 0
+          ? '#eee'
+          : '#fff',
+    }),
+    [],
+  )
+
   const renderOptions = useMemo(
     () =>
       options?.map((option) => (
-        <div key={String(option.value)}>
+        <div
+          key={String(option.value)}
+          style={{ display: shouldShowParentItem(option) ? 'block' : 'none' }}
+        >
           {/* START Parent item */}
-          <div style={optionStyle}>
+          <div style={getOptionStyle(option)}>
             <input
               type="checkbox"
               style={clickableStyle}
@@ -160,57 +209,93 @@ const Filter: React.FC<IFilterProps> = ({ options, onChange }) => {
             />
             <div
               style={optionLabelStyle}
-              onClick={() => handleToggleOption(option.value)}
+              onClick={() =>
+                Array.isArray(option.items) && option.items?.length > 0
+                  ? handleToggleOption(option.value)
+                  : handleChangeParent(option.value)
+              }
             >
               <span>{option.label}</span>
-              <span>{openedOptions.includes(option.value) ? '▲' : '▼'}</span>
+              {Array.isArray(option.items) && option.items?.length > 0 && (
+                <span>{shouldOpenOption(option) ? '▲' : '▼'}</span>
+              )}
             </div>
           </div>
           {/* END Parent item */}
-          {openedOptions.includes(option.value) && (
+          {shouldOpenOption(option) && (
             <div>
-              {option.items.map((item) => (
-                <>
-                  {/* START sub item */}
-                  <div key={String(item.value)} style={itemStyle}>
-                    <input
-                      type="checkbox"
-                      style={clickableStyle}
-                      checked={selectedFilters[option.value]?.includes(
-                        item.value,
-                      )}
-                      onChange={() =>
-                        handleChangeItem(item.value, option.value)
-                      }
-                    />
-                    <span
-                      style={clickableStyle}
-                      onClick={() => handleChangeItem(item.value, option.value)}
-                    >
-                      {item.label}
-                    </span>
-                  </div>
-                  {/* END sub item */}
-                </>
-              ))}
+              {option.items
+                ?.filter((item) =>
+                  withSearch && searchValue
+                    ? item.label
+                        .toLowerCase()
+                        .includes(searchValue.toLowerCase())
+                    : true,
+                )
+                .map((item) => (
+                  <>
+                    {/* START sub item */}
+                    <div key={String(item.value)} style={itemStyle}>
+                      <input
+                        type="checkbox"
+                        style={clickableStyle}
+                        checked={selectedFilters[option.value]?.includes(
+                          item.value,
+                        )}
+                        onChange={() =>
+                          handleChangeItem(item.value, option.value)
+                        }
+                      />
+                      <span
+                        style={clickableStyle}
+                        onClick={() =>
+                          handleChangeItem(item.value, option.value)
+                        }
+                      >
+                        {item.label}
+                      </span>
+                    </div>
+                    {/* END sub item */}
+                  </>
+                ))}
             </div>
           )}
         </div>
       )),
     [
-      handleChangeItem,
+      options,
+      shouldShowParentItem,
+      getOptionStyle,
+      selectedFilters,
+      shouldOpenOption,
       handleChangeParent,
       handleToggleOption,
-      openedOptions,
-      options,
-      selectedFilters,
+      withSearch,
+      searchValue,
+      handleChangeItem,
     ],
   )
 
   return (
-    <div style={filterContainerStyle}>
-      <div style={listContainerStyle}>{renderOptions}</div>
-    </div>
+    <>
+      {withCounter && selectedOptionsCounter > 0 && (
+        <div>
+          <p>{selectedOptionsCounter} selected</p>
+        </div>
+      )}
+      <div style={filterContainerStyle}>
+        {withSearch && (
+          <input
+            style={searchInputStyle}
+            type="text"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            placeholder="Search"
+          />
+        )}
+        <div style={listContainerStyle}>{renderOptions}</div>
+      </div>
+    </>
   )
 }
 
